@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Voltage Divider Calculator</title>
+  <style>
+    .calculator-container {
+      max-width: 600px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #f5f5f5;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    
+    .instruction {
+      color: #666;
+      margin-bottom: 15px;
+      font-size: 0.9em;
+      text-align: center;
+    }
+    
+    .input-group {
+      margin: 15px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .input-group label {
+      width: 120px;
+      font-weight: bold;
+    }
+    
+    .input-group input {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .input-group select {
+      width: 80px;
+      padding: 8px;
+    }
+    
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #2872fa;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    
+    button:hover {
+      background: #1a5cd6;
+    }
+    
+    .error-message {
+      color: red;
+      margin-top: 10px;
+      display: none;
+    }
+    
+    .recommendations {
+      margin-top: 20px;
+      padding: 15px;
+      background: #fff;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+    }
+    
+    .recommendation {
+      margin: 15px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      border-left: 4px solid #2872fa;
+    }
+    
+    .recommendation strong {
+      color: #2872fa;
+      display: block;
+      margin-bottom: 8px;
+    }
+    
+    @media (max-width: 480px) {
+      .input-group {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      
+      .input-group label {
+        width: auto;
+      }
+      
+      .input-group input {
+        width: 100%;
+      }
+    }
+    
+    .result-field {
+      background-color: #e8f4ff;
+      border-color: #0073aa;
+    }
+  </style>
+</head>
+<body>
+  <div class="calculator-container">
+    <h2>Voltage Divider Calculator</h2>
+    <div class="instruction">Remove the value from the field you wish to calculate</div>
+    
+    <div class="input-group">
+      <label>Source Voltage (V<sub>s</sub>):</label>
+      <input type="number" id="vs" step="any" placeholder="Enter voltage">
+      <span>V</span>
+    </div>
+    
+    <div class="input-group">
+      <label>Resistor 1 (R<sub>1</sub>):</label>
+      <input type="number" id="r1" step="any" placeholder="Enter R1">
+      <select id="r1-unit">
+        <option value="1">Ω</option>
+        <option value="1000">KΩ</option>
+        <option value="1000000">MΩ</option>
+      </select>
+    </div>
+    
+    <div class="input-group">
+      <label>Resistor 2 (R<sub>2</sub>):</label>
+      <input type="number" id="r2" step="any" placeholder="Enter R2">
+      <select id="r2-unit">
+        <option value="1">Ω</option>
+        <option value="1000">KΩ</option>
+        <option value="1000000">MΩ</option>
+      </select>
+    </div>
+    
+    <div class="input-group">
+      <label>Output Voltage (V<sub>out</sub>):</label>
+      <input type="number" id="vout" step="any" placeholder="Enter Vout">
+      <span>V</span>
+    </div>
+    
+    <button id="calcBtn">Calculate</button>
+    <div id="error" class="error-message"></div>
+    
+    <!-- Container for resistor recommendations -->
+    <div id="recommendations" class="recommendations"></div>
+    <!-- Separate container for Vout recommendation using both resistor combinations -->
+    <div id="voutRec" class="recommendations"></div>
+  </div>
+  
+  <script>
+    window.onload = function() {
+      // Standard resistor values
+      const standardValues = [
+        10, 15, 22, 33, 47, 68, 100, 150, 220, 330, 470, 680,
+        1000, 1500, 2200, 3300, 4700, 6800, 10000, 15000, 22000, 33000, 47000, 68000,
+        100000, 150000, 220000, 330000, 470000, 680000
+      ];
+      
+      // Format a resistor value for display
+      function formatResistance(ohms) {
+        if (ohms >= 1e6) return `${(ohms/1e6).toFixed(1)} MΩ`;
+        if (ohms >= 1e3) return `${(ohms/1e3).toFixed(1)} KΩ`;
+        return `${ohms} Ω`;
+      }
+      
+      // --- Build all combinations recursively up to a maximum number ---
+      const maxCount = 6; // You can change this if needed
+      
+      // Returns a flat array of combination objects:
+      // { effective, combo (array of resistor values), description, connection, num }
+      function buildCombinations(maxCount) {
+        let results = {};
+        results[1] = [];
+        for (let r of standardValues) {
+          results[1].push({ 
+            effective: r, 
+            combo: [r], 
+            description: formatResistance(r), 
+            connection: "Single", 
+            num: 1 
+          });
+        }
+        for (let n = 2; n <= maxCount; n++) {
+          results[n] = [];
+          for (let i = 1; i < n; i++) {
+            let j = n - i;
+            for (let comb1 of results[i]) {
+              for (let comb2 of results[j]) {
+                // Series combination: simply add the resistances
+                let effectiveSeries = comb1.effective + comb2.effective;
+                let descSeries = `(${comb1.description} + ${comb2.description})`;
+                results[n].push({ 
+                  effective: effectiveSeries, 
+                  combo: comb1.combo.concat(comb2.combo), 
+                  description: descSeries, 
+                  connection: "Series", 
+                  num: n 
+                });
+                // Parallel combination: use the reciprocal formula
+                let effectiveParallel = 1 / (1/comb1.effective + 1/comb2.effective);
+                let descParallel = `(${comb1.description} || ${comb2.description})`;
+                results[n].push({ 
+                  effective: effectiveParallel, 
+                  combo: comb1.combo.concat(comb2.combo), 
+                  description: descParallel, 
+                  connection: "Parallel", 
+                  num: n 
+                });
+              }
+            }
+          }
+          // Prune duplicates by rounding effective value to 2 decimals
+          let unique = {};
+          let pruned = [];
+          for (let comb of results[n]) {
+            let key = comb.effective.toFixed(2);
+            if (!(key in unique)) {
+              unique[key] = comb;
+              pruned.push(comb);
+            }
+          }
+          results[n] = pruned;
+        }
+        let all = [];
+        for (let n = 1; n <= maxCount; n++) {
+          all = all.concat(results[n]);
+        }
+        return all;
+      }
+      
+      // Precompute all combinations up to maxCount
+      const allCombinations = buildCombinations(maxCount);
+      
+      // Search for the best combination that approximates the target within 1% tolerance.
+      function findBestCombination(target, allCombinations) {
+        const tol = target * 0.01; // 1% tolerance
+        let candidates = allCombinations.filter(c => Math.abs(c.effective - target) <= tol);
+        if (candidates.length === 0) return null;
+        // Sort by fewest resistor count, then by error magnitude.
+        candidates.sort((a, b) => {
+          if (a.num !== b.num) return a.num - b.num;
+          return Math.abs(a.effective - target) - Math.abs(b.effective - target);
+        });
+        return candidates[0];
+      }
+      
+      // Main calculation function
+      function calculateVoltageDivider() {
+        const vsInput = document.getElementById('vs');
+        const r1Input = document.getElementById('r1');
+        const r2Input = document.getElementById('r2');
+        const voutInput = document.getElementById('vout');
+        const errorDiv = document.getElementById('error');
+        const recDiv = document.getElementById('recommendations');
+        const voutRecDiv = document.getElementById('voutRec');
+        
+        // Clear previous states
+        [vsInput, r1Input, r2Input, voutInput].forEach(input => {
+          input.classList.remove('result-field');
+        });
+        errorDiv.style.display = 'none';
+        recDiv.innerHTML = "";
+        voutRecDiv.innerHTML = "";
+        
+        // Get input values and convert resistor units
+        const vs = parseFloat(vsInput.value);
+        const r1Value = parseFloat(r1Input.value);
+        const r2Value = parseFloat(r2Input.value);
+        const vout = parseFloat(voutInput.value);
+        const r1Unit = parseFloat(document.getElementById('r1-unit').value);
+        const r2Unit = parseFloat(document.getElementById('r2-unit').value);
+        
+        let R1 = isNaN(r1Value) ? null : r1Value * r1Unit;
+        let R2 = isNaN(r2Value) ? null : r2Value * r2Unit;
+        
+        // At least 3 values must be provided
+        const filledValues = [vs, r1Value, r2Value, vout].filter(v => !isNaN(v));
+        if (filledValues.length < 3) {
+          errorDiv.textContent = "Please fill at least 3 values";
+          errorDiv.style.display = 'block';
+          return;
+        }
+        
+        // Determine which field is missing and compute it using voltage divider formulas.
+        let computedVout = vout; // store computed Vout
+        if (isNaN(vs)) {
+          const computedVs = vout * (R1 + R2) / R2;
+          vsInput.value = computedVs.toFixed(4);
+        } else if (isNaN(vout)) {
+          computedVout = vs * R2 / (R1 + R2);
+          voutInput.value = computedVout.toFixed(4);
+        } else if (isNaN(R1)) {
+          R1 = (vs * R2 / vout) - R2;
+          let targetUnit = parseFloat(document.getElementById('r2-unit').value);
+          document.getElementById('r1-unit').value = targetUnit;
+          r1Input.value = (R1 / targetUnit).toFixed(4);
+        } else if (isNaN(R2)) {
+          R2 = (vout * R1) / (vs - vout);
+          let targetUnit = parseFloat(document.getElementById('r1-unit').value);
+          document.getElementById('r2-unit').value = targetUnit;
+          r2Input.value = (R2 / targetUnit).toFixed(4);
+        }
+        
+        // Always update the Vout field
+        voutInput.value = (isNaN(vout) ? computedVout : vout).toFixed(4);
+        
+        // Prepare recommendation objects for R1 and R2.
+        let recR1 = null, recR2 = null;
+        
+        // R1 recommendation
+        if (standardValues.includes(R1)) {
+          recDiv.innerHTML += `<div class='recommendation'><strong>R1 Recommendation:</strong> ${formatResistance(R1)} is a standard value.</div>`;
+          recR1 = { effective: R1, description: formatResistance(R1) };
+        } else {
+          let bestR1 = findBestCombination(R1, allCombinations);
+          if (bestR1) {
+            recDiv.innerHTML += `<div class='recommendation'><strong>R1 Recommendation:</strong><br>
+              Use ${bestR1.combo.map(r => formatResistance(r)).join(' + ')}<br>
+              Connection: ${bestR1.connection}<br>
+              Total: ${formatResistance(bestR1.effective)}
+            </div>`;
+            recR1 = bestR1;
+          } else {
+            recDiv.innerHTML += `<div class='recommendation'><strong>R1 Recommendation:</strong> No optimal combination found.</div>`;
+          }
+        }
+        
+        // R2 recommendation
+        if (standardValues.includes(R2)) {
+          recDiv.innerHTML += `<div class='recommendation'><strong>R2 Recommendation:</strong> ${formatResistance(R2)} is a standard value.</div>`;
+          recR2 = { effective: R2, description: formatResistance(R2) };
+        } else {
+          let bestR2 = findBestCombination(R2, allCombinations);
+          if (bestR2) {
+            recDiv.innerHTML += `<div class='recommendation'><strong>R2 Recommendation:</strong><br>
+              Use ${bestR2.combo.map(r => formatResistance(r)).join(' + ')}<br>
+              Connection: ${bestR2.connection}<br>
+              Total: ${formatResistance(bestR2.effective)}
+            </div>`;
+            recR2 = bestR2;
+          } else {
+            recDiv.innerHTML += `<div class='recommendation'><strong>R2 Recommendation:</strong> No optimal combination found.</div>`;
+          }
+        }
+        
+        // If both recommended combinations exist, compute the Vout if both are used.
+        if (recR1 && recR2) {
+          let effectiveR1 = recR1.effective;
+          let effectiveR2 = recR2.effective;
+          let voutCombined = vs * effectiveR2 / (effectiveR1 + effectiveR2);
+          voutRecDiv.innerHTML += `<div class='recommendation'><strong>V<sub>out</sub> with Recommended R1 &amp; R2:</strong><br>
+            Using R1: ${recR1.description} and R2: ${recR2.description}<br>
+            Combined V<sub>out</sub>: ${voutCombined.toFixed(4)} V
+          </div>`;
+        }
+      }
+      
+      // Attach events for click and Enter key press.
+      document.getElementById('calcBtn').addEventListener('click', calculateVoltageDivider);
+      document.querySelectorAll('input').forEach(input => {
+        input.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') calculateVoltageDivider();
+        });
+      });
+    };
+  </script>
+</body>
+</html>
